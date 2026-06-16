@@ -165,31 +165,101 @@ def sqlite_disease_match(symptom_names: list[str], limit: int = 5) -> list[dict]
 # ── Gemini diagnosis ──────────────────────────────────────────────────────────
 
 GEMINI_PROMPT = """\
-Tu es un assistant medical specialise pour l'Algerie. Analyse cette description de douleur et retourne UNIQUEMENT un JSON valide, sans texte avant ou apres.
+Tu es un assistant médical IA pour PainDiag+, un système de documentation \
+légale de la douleur utilisé en Algérie par les tribunaux et les compagnies \
+d'assurance (CNAS/CASNOS).
 
-Donnees patient:
-- Description: {pain_description}
-- Region corporelle: {body_region}
-- Intensite NRS: {pain_scale_nrs}/10
-- Antecedents: {medical_history}
-- Documents medicaux: {uploaded_docs_summary}
-- Sexe: {gender} (male=homme, female=femme)
-- Date de naissance: {date_of_birth}
-- Age calcule: {patient_age} ans
+Profil du patient :
+- Âge : {age} ans
+- Sexe : {gender_fr}
+- Localisation de la douleur : {body_part_fr}
+- Intensité de la douleur (ENS) : {nrs_score}/10
+- Description de la douleur : {description}
+- Antécédents médicaux : {medical_history}
 
-Retourne ce JSON exact:
+Tâche :
+1. DIAGNOSTIC DIFFÉRENTIEL : Les 3 affections les plus probables avec un \
+pourcentage de confiance. Tenir compte de l'âge, du sexe, de la localisation \
+et des antécédents médicaux. Pour les femmes : considérer les différences de \
+présentation hormonale et cardiaque. Pour douleur à la tête + ENS élevé + \
+nausées : toujours évoquer AVC/AIT.
+
+2. SYMPTÔMES EXTRAITS : Principaux symptômes médicaux mentionnés ou implicites.
+
+3. TRIAGE :
+   EMERGENCY (ENS 8-10 ou drapeaux rouges) → urgences immédiates
+   URGENT (ENS 5-7) → médecin dans les 24h
+   MODERATE (ENS 3-4) → médecin dans la semaine
+   MILD (ENS 1-2) → auto-soin
+
+4. Recommandation bilingue (arabe + français).
+
+Retourner UNIQUEMENT ce JSON exact, sans aucun autre texte :
 {{
-  "extracted_symptoms": ["symptom1", "symptom2", "symptom3"],
   "diagnoses": [
-    {{"name": "diagnosis1", "confidence": 85, "name_ar": "التشخيص بالعربي"}},
-    {{"name": "diagnosis2", "confidence": 60, "name_ar": "التشخيص بالعربي"}}
+    {{"name": "diagnostic le plus probable en français", "confidence": <entier_1_100_selon_probabilité_clinique>, "name_ar": "التشخيص بالعربية"}},
+    {{"name": "deuxième diagnostic probable en français", "confidence": <entier_1_100_selon_probabilité_clinique>, "name_ar": "التشخيص بالعربية"}},
+    {{"name": "troisième diagnostic à exclure en français", "confidence": <entier_1_100_selon_probabilité_clinique>, "name_ar": "التشخيص بالعربية"}}
   ],
-  "triage_level": "urgent|normal|emergency",
-  "recommendation_ar": "توصية بالعربية للمريض في جملتين",
-  "recommendation_fr": "Recommandation en francais pour le patient en deux phrases",
+  "extracted_symptoms": ["symptôme1", "symptôme2"],
+  "triage_level": "urgent",
+  "recommendation_ar": "...",
+  "recommendation_fr": "...",
   "red_flags": true
 }}
+
+RÈGLES ABSOLUES :
+- Ne jamais inventer de symptômes non mentionnés ou non implicites
+- Toujours tenir compte de l'âge et du sexe dans les 3 diagnostics différentiels
+- Utiliser "confidence" (pas "probability") — le nom du champ doit correspondre exactement
+- triage_level doit être exactement l'un de : emergency, urgent, moderate, mild
+- Tous les noms de diagnostics (champ "name") doivent être en français
+- Les symptômes extraits (extracted_symptoms) doivent être en français
+- recommendation_ar en arabe, recommendation_fr en français
+- La confidence de chaque diagnostic EST CALCULÉE PAR TOI selon la probabilité \
+clinique réelle — ce n'est PAS un exemple fixe. Le premier diagnostic peut avoir \
+92%, le deuxième 45%, le troisième 20% — selon ce que tu juges cliniquement.
+- Les trois confidences doivent être DIFFÉRENTES et refléter la réalité clinique.
+- Ne jamais répéter les valeurs 85, 60, 40 — ce sont des exemples à NE PAS copier.
 """
+
+# Translation tables for gender and body part
+_GENDER_FR = {
+    "male": "homme",
+    "female": "femme",
+    "unknown": "non précisé",
+}
+
+_BODY_PART_FR = {
+    "head": "tête",
+    "neck": "cou",
+    "chest": "poitrine",
+    "abdomen": "abdomen",
+    "back": "dos",
+    "lower_back": "bas du dos",
+    "shoulder": "épaule",
+    "arm": "bras",
+    "elbow": "coude",
+    "wrist": "poignet",
+    "hand": "main",
+    "hip": "hanche",
+    "knee": "genou",
+    "ankle": "cheville",
+    "foot": "pied",
+    "leg": "jambe",
+    "thigh": "cuisse",
+    "groin": "aine",
+    "pelvis": "pelvis",
+    "general": "général",
+    "spine": "colonne vertébrale",
+    "ribs": "côtes",
+    "throat": "gorge",
+    "face": "visage",
+    "jaw": "mâchoire",
+    "ear": "oreille",
+    "eye": "œil",
+    "nose": "nez",
+}
 
 FALLBACK_RESULT = {
     "extracted_symptoms": [],
@@ -208,15 +278,15 @@ def call_gemini(pain_description: str, body_region: str, pain_scale_nrs: float,
     if not gemini_client:
         raise RuntimeError("Gemini not configured")
 
+    gender_fr = _GENDER_FR.get(gender, gender)
+    body_part_fr = _BODY_PART_FR.get(body_region, body_region.replace("_", " "))
     prompt = GEMINI_PROMPT.format(
-        pain_description=pain_description,
-        body_region=body_region,
-        pain_scale_nrs=pain_scale_nrs,
+        age=patient_age,
+        gender_fr=gender_fr,
+        body_part_fr=body_part_fr,
+        nrs_score=pain_scale_nrs,
+        description=pain_description,
         medical_history=medical_history or "aucun",
-        uploaded_docs_summary=uploaded_docs_summary or "aucun",
-        gender=gender,
-        date_of_birth=date_of_birth or "non renseignée",
-        patient_age=patient_age,
     )
     response = gemini_client.models.generate_content(
         model="gemini-2.5-flash",
@@ -231,6 +301,16 @@ def call_gemini(pain_description: str, body_region: str, pain_scale_nrs: float,
     return json.loads(raw)
 
 
+# Map Gemini triage levels to Flutter AppConstants values
+_TRIAGE_MAP = {
+    "emergency": "emergency",
+    "urgent": "consult_24h",
+    "moderate": "monitor",
+    "mild": "safe",
+    "normal": "safe",
+}
+
+
 def get_ai_diagnosis(pain_description: str, body_region: str, pain_scale_nrs: float,
                      medical_history: str, uploaded_docs_summary: str,
                      gender: str = "unknown", date_of_birth: str = "",
@@ -241,6 +321,11 @@ def get_ai_diagnosis(pain_description: str, body_region: str, pain_scale_nrs: fl
                              medical_history, uploaded_docs_summary,
                              gender=gender, date_of_birth=date_of_birth,
                              patient_age=patient_age)
+        # Map triage level to Flutter-expected constant
+        if "triage_level" in result:
+            result["triage_level"] = _TRIAGE_MAP.get(
+                result["triage_level"], result["triage_level"]
+            )
         # Enrich with SQLite confidence scores if Gemini returned symptoms
         symptoms = result.get("extracted_symptoms") or []
         if symptoms and not result.get("diagnoses"):
@@ -782,7 +867,7 @@ async def admin_dashboard(credentials: HTTPBasicCredentials = Depends(_verify_ad
 </head>
 <body>
   <div class="header">
-    <h1>🏥 PainDiag+ — لوحة تحكم الإدارة</h1>
+    <h1> +PainDiag — لوحة تحكم الإدارة</h1>
     <p>تتجدد الصفحة تلقائياً كل 30 ثانية</p>
   </div>
   <div class="section">
