@@ -736,23 +736,38 @@ _VALID_EXPERT_TYPES = {"medical_expert", "insurance"}
 # ── Admin CSS (kept as a variable to avoid f-string brace escaping) ───────────
 
 _ADMIN_CSS = """
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; direction: rtl; padding: 24px; }
-.header { background: #1B4F72; color: #fff; padding: 20px 28px; border-radius: 12px; margin-bottom: 24px; text-align: center; }
-.header h1 { font-size: 22px; }
-.header p { opacity: .8; font-size: 12px; margin-top: 4px; }
-.section { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
-h2 { color: #1B4F72; font-size: 15px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid #1B4F72; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; direction: rtl; padding: 12px; font-size: 16px; }
+.header { background: #1B4F72; color: #fff; padding: 16px 20px; border-radius: 12px; margin-bottom: 20px; text-align: center; word-wrap: break-word; }
+.header h1 { font-size: 18px; word-wrap: break-word; }
+.header p { opacity: .8; font-size: 13px; margin-top: 4px; }
+.section { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+h2 { color: #1B4F72; font-size: 15px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid #1B4F72; word-wrap: break-word; }
+.table-wrapper { overflow-x: auto; width: 100%; }
 table { width: 100%; border-collapse: collapse; }
-th { background: #1B4F72; color: #fff; padding: 10px 12px; text-align: right; font-size: 13px; }
-td { padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 13px; vertical-align: middle; }
+th { background: #1B4F72; color: #fff; padding: 10px 12px; text-align: right; font-size: 14px; }
+td { padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tr:hover { background: #f9fbfc; }
-.btn-approve { background: #27ae60; color: #fff; border: none; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: 4px; }
+.btn-approve { background: #27ae60; color: #fff; border: none; padding: 12px; margin: 4px 0; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; display: block; }
 .btn-approve:hover { background: #229954; }
-.btn-reject { background: #e74c3c; color: #fff; border: none; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.btn-reject { background: #e74c3c; color: #fff; border: none; padding: 12px; margin: 4px 0; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; display: block; }
 .btn-reject:hover { background: #c0392b; }
-.note { text-align: center; color: #aaa; font-size: 11px; margin-top: 8px; }
+.note { text-align: center; color: #aaa; font-size: 12px; margin-top: 8px; }
+@media (min-width: 769px) {
+  body { padding: 24px; }
+  .header h1 { font-size: 22px; }
+  .action-form { display: inline; }
+  .btn-approve, .btn-reject { width: auto; display: inline-block; padding: 5px 14px; font-size: 12px; margin: 0; }
+  .btn-approve { margin-left: 4px; }
+}
+@media (max-width: 768px) {
+  table, thead, tbody, th, td, tr { display: block; }
+  thead tr { position: absolute; top: -9999px; left: -9999px; }
+  tr { margin-bottom: 12px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; }
+  td { border: none; border-bottom: 1px solid #eee; position: relative; padding-left: 45%; text-align: right; }
+  td:before { position: absolute; right: calc(100% - 40%); left: 8px; text-align: left; font-weight: bold; content: attr(data-label); }
+}
 """
 
 
@@ -827,15 +842,15 @@ async def admin_dashboard(credentials: HTTPBasicCredentials = Depends(_verify_ad
         label = _EXPERT_LABELS.get(e["expert_type"], e["expert_type"])
         pending_rows += (
             f"<tr>"
-            f"<td>{e['full_name']}</td>"
-            f"<td><code>{e['accreditation_number']}</code></td>"
-            f"<td>{label}</td>"
-            f"<td>{e['email']}</td>"
-            f"<td>{(e['created_at'] or '')[:10]}</td>"
-            f"<td>"
-            f"<form method='post' action='/admin/experts/{e['id']}/approve' style='display:inline'>"
+            f"<td data-label='الاسم الكامل'>{e['full_name']}</td>"
+            f"<td data-label='رقم الاعتماد'><code>{e['accreditation_number']}</code></td>"
+            f"<td data-label='النوع'>{label}</td>"
+            f"<td data-label='البريد الإلكتروني'>{e['email']}</td>"
+            f"<td data-label='تاريخ الطلب'>{(e['created_at'] or '')[:10]}</td>"
+            f"<td data-label='الإجراء'>"
+            f"<form class='action-form' method='post' action='/admin/experts/{e['id']}/approve'>"
             f"<button type='submit' class='btn-approve'>موافقة ✓</button></form>"
-            f"<form method='post' action='/admin/experts/{e['id']}/reject' style='display:inline'>"
+            f"<form class='action-form' method='post' action='/admin/experts/{e['id']}/reject'>"
             f"<button type='submit' class='btn-reject'>رفض ✗</button></form>"
             f"</td></tr>"
         )
@@ -847,10 +862,10 @@ async def admin_dashboard(credentials: HTTPBasicCredentials = Depends(_verify_ad
         label = _EXPERT_LABELS.get(e["expert_type"], e["expert_type"])
         approved_rows += (
             f"<tr>"
-            f"<td>{e['full_name']}</td>"
-            f"<td><code>{e['accreditation_number']}</code></td>"
-            f"<td>{label}</td>"
-            f"<td>{(e['approved_at'] or '')[:10]}</td>"
+            f"<td data-label='الاسم الكامل'>{e['full_name']}</td>"
+            f"<td data-label='رقم الاعتماد'><code>{e['accreditation_number']}</code></td>"
+            f"<td data-label='النوع'>{label}</td>"
+            f"<td data-label='تاريخ الموافقة'>{(e['approved_at'] or '')[:10]}</td>"
             f"</tr>"
         )
     if not approved_rows:
@@ -872,22 +887,26 @@ async def admin_dashboard(credentials: HTTPBasicCredentials = Depends(_verify_ad
   </div>
   <div class="section">
     <h2>⏳ طلبات التسجيل المعلقة</h2>
-    <table>
-      <thead><tr>
-        <th>الاسم الكامل</th><th>رقم الاعتماد</th><th>النوع</th>
-        <th>البريد الإلكتروني</th><th>تاريخ الطلب</th><th>الإجراء</th>
-      </tr></thead>
-      <tbody>{pending_rows}</tbody>
-    </table>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr>
+          <th>الاسم الكامل</th><th>رقم الاعتماد</th><th>النوع</th>
+          <th>البريد الإلكتروني</th><th>تاريخ الطلب</th><th>الإجراء</th>
+        </tr></thead>
+        <tbody>{pending_rows}</tbody>
+      </table>
+    </div>
   </div>
   <div class="section">
     <h2>✅ الخبراء الموافق عليهم</h2>
-    <table>
-      <thead><tr>
-        <th>الاسم الكامل</th><th>رقم الاعتماد</th><th>النوع</th><th>تاريخ الموافقة</th>
-      </tr></thead>
-      <tbody>{approved_rows}</tbody>
-    </table>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr>
+          <th>الاسم الكامل</th><th>رقم الاعتماد</th><th>النوع</th><th>تاريخ الموافقة</th>
+        </tr></thead>
+        <tbody>{approved_rows}</tbody>
+      </table>
+    </div>
   </div>
   <p class="note">🔄 يتجدد تلقائياً كل 30 ثانية</p>
 </body>
